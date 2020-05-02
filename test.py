@@ -96,19 +96,31 @@ def imae(gt,img,ratio):
 def main():
    processed = preprocess.get_transform(augment=False)
 
-   gt_fold = ''
-   left_fold = ''
-   lidar2_raw =''
+   server = 'mcity'
+#    server = 'name'
+   if server == 'mcity':
+       kitti_root_img = '/mnt/storage8t/minghanz/Datasets/KITTI_data/kitti_data/'
+       kitti_root_dep = kitti_root_img
+   else:
+       kitti_root_img = '/media/sda1/minghanz/datasets/kitti/kitti_data/'
+       kitti_root_dep = '/media/sda1/minghanz/datasets/kitti/kitti_fill_depth/'
 
-   gt = [img for img in os.listdir(gt_fold)]
+#    gt_fold = ''
+   left_fold = kitti_root_img + '2011_09_26/2011_09_26_drive_0001_sync/image_02/data/'
+   lidar2_raw = kitti_root_dep + '2011_09_26/2011_09_26_drive_0001_sync/unfilled_depth_02/data/'
+   dep_output_fold = kitti_root_dep + '2011_09_26/2011_09_26_drive_0001_sync/depth_completed_02/data/'
+   if not os.path.exists(dep_output_fold):
+       os.makedirs(dep_output_fold)
+
+#    gt = [img for img in os.listdir(gt_fold)]
    image = [img for img in os.listdir(left_fold)]
    lidar2 = [img for img in os.listdir(lidar2_raw)]
-   gt_test = [gt_fold + img for img in gt]
+#    gt_test = [gt_fold + img for img in gt]
    left_test = [left_fold + img for img in image]
    sparse2_test = [lidar2_raw + img for img in lidar2]
    left_test.sort()
    sparse2_test.sort()
-   gt_test.sort()
+#    gt_test.sort()
 
    time_all = 0.0
 
@@ -120,8 +132,8 @@ def main():
        imgL = processed(imgL_o).numpy()
        imgL = np.reshape(imgL, [1, 3, imgL_o.shape[0], imgL_o.shape[1]])
 
-       gtruth = skimage.io.imread(gt_test[inx]).astype(np.float32)
-       gtruth = gtruth * 1.0 / 256.0
+    #    gtruth = skimage.io.imread(gt_test[inx]).astype(np.float32)
+    #    gtruth = gtruth * 1.0 / 256.0
        sparse = skimage.io.imread(sparse2_test[inx]).astype(np.float32)
        sparse = sparse *1.0 / 256.0
 
@@ -133,7 +145,7 @@ def main():
        mask = processed(mask).numpy()
        mask = np.reshape(mask, [1, 1, imgL_o.shape[0], imgL_o.shape[1]])
 
-       output1 = '' + left_test[inx].split('/')[-1]
+       output1 = dep_output_fold + left_test[inx].split('/')[-1]
 
        pred, time_temp = test(imgL, sparse, mask)
        pred = np.where(pred <= 0.0, 0.9, pred)
