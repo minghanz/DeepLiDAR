@@ -45,6 +45,8 @@ if args.loadmodel is not None:
     model.load_state_dict(state_dict)
 print('Number of model parameters: {}'.format(sum([p.data.nelement() for p in model.parameters()])))
 
+processed = preprocess.get_transform(augment=False)
+
 def test(imgL,sparse,mask):
         model.eval()
 
@@ -93,79 +95,122 @@ def imae(gt,img,ratio):
     error = np.mean(np.fabs(dif))
     return error
 
-def main():
-   processed = preprocess.get_transform(augment=False)
+def main_main():
+    #    server = 'mcity'
+    server = 'name'
+    if server == 'mcity':
+        kitti_root_img = '/mnt/storage8t/minghanz/Datasets/KITTI_data/kitti_data/'
+        kitti_root_dep = kitti_root_img
+    else:
+        kitti_root_img = '/media/sda1/minghanz/datasets/kitti/kitti_data/'
+        kitti_root_dep = kitti_root_img
 
-   server = 'mcity'
-#    server = 'name'
-   if server == 'mcity':
-       kitti_root_img = '/mnt/storage8t/minghanz/Datasets/KITTI_data/kitti_data/'
-       kitti_root_dep = kitti_root_img
-   else:
-       kitti_root_img = '/media/sda1/minghanz/datasets/kitti/kitti_data/'
-       kitti_root_dep = '/media/sda1/minghanz/datasets/kitti/kitti_fill_depth/'
+    seqs = []
+    for date in os.listdir(kitti_root_dep):
+        if os.path.isfile(os.path.join(kitti_root_dep, date)):
+            continue
+        for seq in os.listdir(os.path.join(kitti_root_dep, date)):
+            if os.path.isfile(os.path.join(kitti_root_dep, date, seq)):
+                continue
+            seqs.append(os.path.join(date, seq))
+        
+    #    print(seqs)
+    for seq in seqs:
+        print(seq)
+        main(kitti_root_img, kitti_root_dep, seq)
 
-#    gt_fold = ''
-   left_fold = kitti_root_img + '2011_09_26/2011_09_26_drive_0001_sync/image_02/data/'
-   lidar2_raw = kitti_root_dep + '2011_09_26/2011_09_26_drive_0001_sync/unfilled_depth_02/data/'
-   dep_output_fold = kitti_root_dep + '2011_09_26/2011_09_26_drive_0001_sync/depth_completed_02/data/'
-   if not os.path.exists(dep_output_fold):
-       os.makedirs(dep_output_fold)
+def process_single(img_path, lid_path, output_path):
 
-#    gt = [img for img in os.listdir(gt_fold)]
-   image = [img for img in os.listdir(left_fold)]
-   lidar2 = [img for img in os.listdir(lidar2_raw)]
-#    gt_test = [gt_fold + img for img in gt]
-   left_test = [left_fold + img for img in image]
-   sparse2_test = [lidar2_raw + img for img in lidar2]
-   left_test.sort()
-   sparse2_test.sort()
-#    gt_test.sort()
-
-   time_all = 0.0
-
-   for inx in range(len(left_test)):
-       print(inx)
-
-       imgL_o = skimage.io.imread(left_test[inx])
-       imgL_o = np.reshape(imgL_o, [imgL_o.shape[0], imgL_o.shape[1],3])
-       imgL = processed(imgL_o).numpy()
-       imgL = np.reshape(imgL, [1, 3, imgL_o.shape[0], imgL_o.shape[1]])
+    imgL_o = skimage.io.imread(img_path)
+    imgL_o = np.reshape(imgL_o, [imgL_o.shape[0], imgL_o.shape[1],3])
+    
+    right_pad = 0
+    bottom_pad = 0
+    if imgL_o.shape[0] % 2 != 0:
+        imgL_o = np.concatenate((imgL_o, imgL_o[[-1]]), axis=0)
+        bottom_pad = 1
+    if imgL_o.shape[1] % 2 != 0:
+        imgL_o = np.concatenate((imgL_o, imgL_o[:, [-1]]), axis=1)
+        right_pad = 1
+        
+    imgL = processed(imgL_o).numpy()
+    imgL = np.reshape(imgL, [1, 3, imgL_o.shape[0], imgL_o.shape[1]])
 
     #    gtruth = skimage.io.imread(gt_test[inx]).astype(np.float32)
     #    gtruth = gtruth * 1.0 / 256.0
-       sparse = skimage.io.imread(sparse2_test[inx]).astype(np.float32)
-       sparse = sparse *1.0 / 256.0
+    sparse = skimage.io.imread(lid_path).astype(np.float32)
+    sparse = sparse *1.0 / 256.0
 
-       mask = np.where(sparse > 0.0, 1.0, 0.0)
-       mask = np.reshape(mask, [imgL_o.shape[0], imgL_o.shape[1], 1])
-       sparse = np.reshape(sparse, [imgL_o.shape[0], imgL_o.shape[1], 1])
-       sparse = processed(sparse).numpy()
-       sparse = np.reshape(sparse, [1, 1, imgL_o.shape[0], imgL_o.shape[1]])
-       mask = processed(mask).numpy()
-       mask = np.reshape(mask, [1, 1, imgL_o.shape[0], imgL_o.shape[1]])
+    if bottom_pad == 1:
+        sparse = np.concatenate((sparse, sparse[[-1]]), axis=0)
+    if right_pad == 1:
+        sparse = np.concatenate((sparse, sparse[:, [-1]]), axis=1)
 
-       output1 = dep_output_fold + left_test[inx].split('/')[-1]
+    mask = np.where(sparse > 0.0, 1.0, 0.0)
+    mask = np.reshape(mask, [imgL_o.shape[0], imgL_o.shape[1], 1])
+    sparse = np.reshape(sparse, [imgL_o.shape[0], imgL_o.shape[1], 1])
+    sparse = processed(sparse).numpy()
+    sparse = np.reshape(sparse, [1, 1, imgL_o.shape[0], imgL_o.shape[1]])
+    mask = processed(mask).numpy()
+    mask = np.reshape(mask, [1, 1, imgL_o.shape[0], imgL_o.shape[1]])
+    
+    output1 = output_path
 
-       pred, time_temp = test(imgL, sparse, mask)
-       pred = np.where(pred <= 0.0, 0.9, pred)
+    pred, time_temp = test(imgL, sparse, mask)
+    pred = np.where(pred <= 0.0, 0.9, pred)
 
-       time_all = time_all+time_temp
-       print(time_temp)
+    # print(pred.max())
+    if bottom_pad == 1:
+        pred = pred[:-1]
+    if right_pad == 1:
+        pred = pred[:, :-1]
 
-       pred_show = pred * 256.0
-       pred_show = pred_show.astype('uint16')
-       res_buffer = pred_show.tobytes()
-       img = Image.new("I",pred_show.T.shape)
-       img.frombytes(res_buffer,'raw',"I;16")
-       img.save(output1)
+    pred_show = pred * 256.0
+    pred_show = pred_show.astype('uint16')
+    res_buffer = pred_show.tobytes()
+    img = Image.new("I",pred_show.T.shape)
+    img.frombytes(res_buffer,'raw',"I;16")
+    img.save(output1)
 
-   print("time: %.8f" % (time_all * 1.0 / 1000.0))
+    return time_temp
+
+def main(kitti_root_img, kitti_root_dep, seq_path):
+    #    gt_fold = ''
+    left_fold = os.path.join(kitti_root_img , seq_path , 'image_02/data/')
+    lidar2_raw = os.path.join(kitti_root_dep , seq_path , 'proj_depth/velodyne_raw/image_02/')
+    dep_output_fold = os.path.join(kitti_root_dep , seq_path , 'depth_completed/DeepLidar/image_02/')
+    if os.path.exists(dep_output_fold):
+        print(seq_path, 'processed')
+        return
+    else:
+        os.makedirs(dep_output_fold)
+
+    #    gt = [img for img in os.listdir(gt_fold)]
+    # image = [img for img in os.listdir(left_fold)]
+    lidar2 = [img for img in os.listdir(lidar2_raw)]
+    #    gt_test = [gt_fold + img for img in gt]
+    # left_test = [os.path.join(left_fold , img) for img in image]
+    sparse2_test = [os.path.join(lidar2_raw , img) for img in lidar2]
+    #    gt_test.sort()
+    # left_test.sort()
+    sparse2_test.sort()
+
+    time_all = 0.0
+
+    for inx in range(len(sparse2_test)):
+        print(sparse2_test[inx])
+
+        lid_path = sparse2_test[inx]
+        img_path = os.path.join(left_fold, sparse2_test[inx].split('/')[-1].split('.')[0]+'.jpg')
+        output_path = os.path.join(dep_output_fold , sparse2_test[inx].split('/')[-1])
+
+        time_temp = process_single(img_path, lid_path, output_path)
+
+        time_all = time_all+time_temp
+        print(time_temp)
+
+    print("time: %.8f" % (time_all * 1.0 / 1000.0))
 
 if __name__ == '__main__':
-   main()
-
-
-
-
+   main_main()
 
