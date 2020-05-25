@@ -98,28 +98,53 @@ def imae(gt,img,ratio):
 def main_main():
     #    server = 'mcity'
     server = 'name'
-    if server == 'mcity':
-        kitti_root_img = '/mnt/storage8t/minghanz/Datasets/KITTI_data/kitti_data/'
-        kitti_root_dep = kitti_root_img
-    else:
-        kitti_root_img = '/media/sda1/minghanz/datasets/kitti/kitti_data/'
-        kitti_root_dep = kitti_root_img
 
-    seqs = []
-    for date in os.listdir(kitti_root_dep):
-        if os.path.isfile(os.path.join(kitti_root_dep, date)):
-            continue
-        for seq in os.listdir(os.path.join(kitti_root_dep, date)):
-            if os.path.isfile(os.path.join(kitti_root_dep, date, seq)):
+    # dataset = 'kitti'
+    dataset = 'waymo'
+    if dataset == 'kitti':    
+        if server == 'mcity':
+            data_root_img = '/mnt/storage8t/minghanz/Datasets/KITTI_data/kitti_data/'
+            data_root_dep = data_root_img
+            data_root_output = data_root_img
+        else:
+            data_root_img = '/media/sda1/minghanz/datasets/kitti/kitti_data/'
+            data_root_dep = data_root_img
+            data_root_output = '/media/sda1/minghanz/datasets/kitti_dep_comp'
+
+        seqs = []
+        for date in os.listdir(data_root_dep):
+            if os.path.isfile(os.path.join(data_root_dep, date)):
                 continue
-            seqs.append(os.path.join(date, seq))
+            for seq in os.listdir(os.path.join(data_root_dep, date)):
+                if os.path.isfile(os.path.join(data_root_dep, date, seq)):
+                    continue
+                seqs.append(os.path.join(date, seq))
+
+    elif dataset == 'waymo':
+        if server == 'mcity':
+            data_root_img = '/mnt/storage8t/datasets/waymo_kitti/training'
+            data_root_dep = data_root_img
+            data_root_output = data_root_img
+        else:
+            data_root_img = '/media/sda1/minghanz/datasets/waymo_kitti'
+            data_root_dep = data_root_img
+            data_root_output = '/media/sda1/minghanz/datasets/waymo_kitti_dep_comp'
+
+        seqs = []
+        for seq in os.listdir(data_root_dep):
+            if os.path.isfile(os.path.join(data_root_dep, seq)):
+                continue
+            seqs.append(seq)
+
+    else:
+        raise ValueError('dataset {} not recognized'.format(dataset))
         
     #    print(seqs)
     for seq in seqs:
         print(seq)
-        main(kitti_root_img, kitti_root_dep, seq)
+        main(data_root_img, data_root_dep, data_root_output, seq, dataset)
 
-def process_single(img_path, lid_path, output_path):
+def process_single(img_path, lid_path, output_path, dataset):
 
     imgL_o = skimage.io.imread(img_path)
     imgL_o = np.reshape(imgL_o, [imgL_o.shape[0], imgL_o.shape[1],3])
@@ -136,10 +161,16 @@ def process_single(img_path, lid_path, output_path):
     imgL = processed(imgL_o).numpy()
     imgL = np.reshape(imgL, [1, 3, imgL_o.shape[0], imgL_o.shape[1]])
 
-    #    gtruth = skimage.io.imread(gt_test[inx]).astype(np.float32)
-    #    gtruth = gtruth * 1.0 / 256.0
-    sparse = skimage.io.imread(lid_path).astype(np.float32)
-    sparse = sparse *1.0 / 256.0
+    if dataset == 'kitti':
+        #    gtruth = skimage.io.imread(gt_test[inx]).astype(np.float32)
+        #    gtruth = gtruth * 1.0 / 256.0
+        sparse = skimage.io.imread(lid_path).astype(np.float32)
+        sparse = sparse *1.0 / 256.0
+    elif dataset == 'waymo':
+        sparse = skimage.io.imread(lid_path).astype(np.float32)
+        sparse = sparse *1.0 / 256.0
+    else:
+        raise ValueError('dataset {} not recognized'.format(dataset))
 
     if bottom_pad == 1:
         sparse = np.concatenate((sparse, sparse[[-1]]), axis=0)
@@ -174,11 +205,19 @@ def process_single(img_path, lid_path, output_path):
 
     return time_temp
 
-def main(kitti_root_img, kitti_root_dep, seq_path):
+def main(data_root_img, data_root_dep, data_root_output, seq_path, dataset):
+    if dataset == 'kitti':
     #    gt_fold = ''
-    left_fold = os.path.join(kitti_root_img , seq_path , 'image_02/data/')
-    lidar2_raw = os.path.join(kitti_root_dep , seq_path , 'proj_depth/velodyne_raw/image_02/')
-    dep_output_fold = os.path.join(kitti_root_dep , seq_path , 'depth_completed/DeepLidar/image_02/')
+        left_fold = os.path.join(data_root_img , seq_path , 'image_02/data/')
+        lidar2_raw = os.path.join(data_root_dep , seq_path , 'proj_depth/velodyne_raw/image_02/')
+        dep_output_fold = os.path.join(data_root_output , seq_path , 'depth_completed/DeepLidar/image_02/')
+    elif dataset == 'waymo':
+        left_fold = os.path.join(data_root_img , seq_path , 'image_00/')
+        lidar2_raw = os.path.join(data_root_dep , seq_path , 'depth_00/')
+        dep_output_fold = os.path.join(data_root_output , seq_path , 'depth_completed/DeepLidar/depth_00/')
+    else:
+        raise ValueError("dataset {} not recognized.".format(dataset))
+
     if os.path.exists(dep_output_fold):
         print(seq_path, 'processed')
         return
@@ -198,15 +237,16 @@ def main(kitti_root_img, kitti_root_dep, seq_path):
     time_all = 0.0
 
     for inx in range(len(sparse2_test)):
-        print(sparse2_test[inx])
+        print("sparse input:", sparse2_test[inx])
 
         lid_path = sparse2_test[inx]
         img_path = os.path.join(left_fold, sparse2_test[inx].split('/')[-1].split('.')[0]+'.jpg')
         output_path = os.path.join(dep_output_fold , sparse2_test[inx].split('/')[-1])
 
-        time_temp = process_single(img_path, lid_path, output_path)
+        time_temp = process_single(img_path, lid_path, output_path, dataset)
 
         time_all = time_all+time_temp
+        print("target path:", output_path)
         print(time_temp)
 
     print("time: %.8f" % (time_all * 1.0 / 1000.0))
